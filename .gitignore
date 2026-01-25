@@ -1,0 +1,15 @@
+# Node
+node_modules/
+
+# Environment variables
+.env
+
+# Uploads
+uploads/
+
+# VS / Windows junk
+.vs/
+ToolRental1.sln
+
+# OS
+.DS_Store
