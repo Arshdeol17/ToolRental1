@@ -1,0 +1,149 @@
+import { Routes, Route, Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+
+import Home from "./pages/Home.jsx";
+import Login from "./pages/Login.jsx";
+import Register from "./pages/Register.jsx";
+import Tools from "./pages/Tools.jsx";
+import AddTool from "./pages/AddTool.jsx";
+import ToolDetails from "./pages/ToolDetails.jsx";
+import RentalRequests from "./pages/RentalRequests.jsx";
+import Notifications from "./pages/Notifications.jsx";
+
+export default function App() {
+    const token = localStorage.getItem("token");
+
+    const [requestCount, setRequestCount] = useState(0); // owner requests
+    const [notificationCount, setNotificationCount] = useState(0); // renter notifications
+
+    const loadCounts = async () => {
+        if (!token) {
+            setRequestCount(0);
+            setNotificationCount(0);
+            return;
+        }
+
+        try {
+            // Owner requests
+            const reqRes = await fetch("http://localhost:5000/api/rentals/requests", {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const reqData = await reqRes.json().catch(() => []);
+            setRequestCount(
+                Array.isArray(reqData)
+                    ? reqData.filter((r) => String(r.status).toLowerCase() === "pending").length
+                    : 0
+            );
+
+            // Renter notifications
+            const myRes = await fetch("http://localhost:5000/api/rentals/my", {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const myData = await myRes.json().catch(() => []);
+            setNotificationCount(
+                Array.isArray(myData)
+                    ? myData.filter((r) => String(r.status).toLowerCase() === "pending").length
+                    : 0
+            );
+        } catch (err) {
+            console.error("Failed to load counts", err);
+        }
+    };
+
+    // Live polling
+    useEffect(() => {
+        loadCounts();
+        const interval = setInterval(loadCounts, 5000);
+        return () => clearInterval(interval);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [token]);
+
+    const handleLogout = () => {
+        localStorage.removeItem("token");
+        window.location.href = "/";
+    };
+
+    const Badge = ({ count }) =>
+        count > 0 ? (
+            <span className="ml-2 bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                {count}
+            </span>
+        ) : null;
+
+    return (
+        <div className="min-h-screen bg-gray-50">
+            {/* NAVBAR */}
+            <nav className="bg-blue-600 shadow-sm px-6 py-4">
+                <div className="max-w-6xl mx-auto flex justify-between items-center">
+                    <Link to="/" className="text-2xl font-bold text-white">
+                        ToolRental
+                    </Link>
+
+                    <div className="flex items-center space-x-6">
+                        <Link to="/" className="text-white hover:underline">
+                            Home
+                        </Link>
+
+                        <Link to="/tools" className="text-white hover:underline">
+                            Browse Tools
+                        </Link>
+
+                        {token && (
+                            <Link
+                                to="/notifications"
+                                className="text-white hover:underline flex items-center"
+                            >
+                                Notifications
+                                <Badge count={notificationCount} />
+                            </Link>
+                        )}
+
+                        {token && (
+                            <Link
+                                to="/rentals/requests"
+                                className="text-white hover:underline flex items-center"
+                            >
+                                Rental Requests
+                                <Badge count={requestCount} />
+                            </Link>
+                        )}
+
+                        {token ? (
+                            <button
+                                onClick={handleLogout}
+                                className="text-white hover:underline"
+                            >
+                                Logout
+                            </button>
+                        ) : (
+                            <>
+                                <Link to="/login" className="text-white hover:underline">
+                                    Login
+                                </Link>
+
+                                <Link
+                                    to="/register"
+                                    className="border border-white px-4 py-1 rounded text-white hover:bg-white hover:text-blue-600 transition"
+                                >
+                                    Register
+                                </Link>
+                            </>
+                        )}
+                    </div>
+                </div>
+            </nav>
+
+            {/* ROUTES */}
+            <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/tools" element={<Tools />} />
+                <Route path="/tools/add" element={<AddTool />} />
+                <Route path="/tools/:id" element={<ToolDetails />} />
+                <Route path="/rentals/requests" element={<RentalRequests />} />
+                <Route path="/notifications" element={<Notifications />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+            </Routes>
+        </div>
+    );
+}
