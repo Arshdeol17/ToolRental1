@@ -28,3 +28,4 @@ C:\Users\deol3\OneDrive\Desktop\RD Polytech\CAPSTONE FINAL\ToolRental1\server\ob
 C:\Users\deol3\OneDrive\Desktop\RD Polytech\CAPSTONE FINAL\ToolRental1\server\obj\Debug\net8.0\server.pdb
 C:\Users\deol3\OneDrive\Desktop\RD Polytech\CAPSTONE FINAL\ToolRental1\server\obj\Debug\net8.0\server.genruntimeconfig.cache
 C:\Users\deol3\OneDrive\Desktop\RD Polytech\CAPSTONE FINAL\ToolRental1\server\obj\Debug\net8.0\ref\server.dll
+C:\Users\deol3\OneDrive\Desktop\RD Polytech\CAPSTONE FINAL\ToolRental1\server\obj\Debug\net8.0\server.sourcelink.json

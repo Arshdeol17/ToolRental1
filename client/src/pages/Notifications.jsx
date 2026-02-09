@@ -42,6 +42,13 @@ export default function Notifications() {
         return "bg-yellow-50 text-yellow-700 border-yellow-100";
     };
 
+    const statusText = (status) => {
+        const s = String(status || "").toLowerCase();
+        if (s === "approved") return "✅ Approved — you can contact the owner for pickup.";
+        if (s === "rejected") return "❌ Rejected — try another tool or different dates.";
+        return "⏳ Pending — waiting for owner response.";
+    };
+
     if (!token) {
         return (
             <div className="min-h-screen bg-gray-50">
@@ -149,16 +156,19 @@ export default function Notifications() {
                                                 </div>
                                             </div>
 
-                                            <div className="text-sm text-gray-500">
-                                                {String(r.status || "").toLowerCase() === "approved" && (
-                                                    <span>✅ Approved — you can contact the owner for pickup.</span>
-                                                )}
-                                                {String(r.status || "").toLowerCase() === "rejected" && (
-                                                    <span>❌ Rejected — try another tool or different dates.</span>
-                                                )}
-                                                {String(r.status || "").toLowerCase() === "pending" && (
-                                                    <span>⏳ Pending — waiting for owner response.</span>
-                                                )}
+                                            {/* ✅ Right side: status + chat */}
+                                            <div className="flex flex-col sm:items-end gap-2">
+                                                <div className="text-sm text-gray-500">
+                                                    {statusText(r.status)}
+                                                </div>
+
+                                                {/* ✅ Chat button */}
+                                                <Link
+                                                    to={`/chat/${r.id}`}
+                                                    className="inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-blue-600 hover:bg-gray-50 transition"
+                                                >
+                                                    Chat
+                                                </Link>
                                             </div>
                                         </div>
 

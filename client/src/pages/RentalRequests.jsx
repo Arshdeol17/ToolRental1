@@ -29,7 +29,7 @@ export default function RentalRequests() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const updateStatus = async (id, action) => {
+    const callAction = async (id, action) => {
         try {
             const res = await fetch(`http://localhost:5000/api/rentals/${id}/${action}`, {
                 method: "PATCH",
@@ -42,7 +42,6 @@ export default function RentalRequests() {
                 return;
             }
 
-            // refresh list
             loadRequests();
         } catch (e) {
             alert("Failed to update request");
@@ -52,11 +51,10 @@ export default function RentalRequests() {
 
     const statusBadge = (status) => {
         const s = String(status || "").toLowerCase();
-
-        if (s === "approved")
-            return "bg-green-50 text-green-700 border border-green-100";
-        if (s === "rejected")
-            return "bg-red-50 text-red-700 border border-red-100";
+        if (s === "approved") return "bg-green-50 text-green-700 border border-green-100";
+        if (s === "rejected") return "bg-red-50 text-red-700 border border-red-100";
+        if (s === "returned_pending") return "bg-blue-50 text-blue-700 border border-blue-100";
+        if (s === "completed") return "bg-purple-50 text-purple-700 border border-purple-100";
         return "bg-yellow-50 text-yellow-700 border border-yellow-100";
     };
 
@@ -69,7 +67,7 @@ export default function RentalRequests() {
                             Rental Requests
                         </h1>
                         <p className="text-sm text-gray-500 mt-1">
-                            Approve or reject requests for your tools.
+                            Approve, reject, and confirm returns.
                         </p>
                     </div>
 
@@ -95,6 +93,7 @@ export default function RentalRequests() {
                         {requests.map((r) => {
                             const statusLower = String(r.status || "").toLowerCase();
                             const isPending = statusLower === "pending";
+                            const isReturnedPending = statusLower === "returned_pending";
 
                             return (
                                 <div
@@ -102,7 +101,6 @@ export default function RentalRequests() {
                                     className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden"
                                 >
                                     <div className="grid grid-cols-1 md:grid-cols-12 gap-0">
-                                        {/* Tool Image */}
                                         <div className="md:col-span-3">
                                             {r.tool_image_url ? (
                                                 <img
@@ -117,20 +115,14 @@ export default function RentalRequests() {
                                             )}
                                         </div>
 
-                                        {/* Details */}
                                         <div className="md:col-span-9 p-5">
                                             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                                                 <div>
-                                                    <h2 className="text-lg font-bold text-gray-900">
-                                                        {r.tool_name}
-                                                    </h2>
+                                                    <h2 className="text-lg font-bold text-gray-900">{r.tool_name}</h2>
 
                                                     <p className="text-sm text-gray-600 mt-1">
-                                                        <span className="font-semibold">Customer:</span>{" "}
-                                                        {r.renter_name}{" "}
-                                                        <span className="text-gray-400">
-                                                            ({r.renter_email})
-                                                        </span>
+                                                        <span className="font-semibold">Customer:</span> {r.renter_name}{" "}
+                                                        <span className="text-gray-400">({r.renter_email})</span>
                                                     </p>
 
                                                     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -153,23 +145,29 @@ export default function RentalRequests() {
                                                     </div>
                                                 </div>
 
-                                                {/* Actions */}
                                                 {isPending ? (
                                                     <div className="flex gap-2">
                                                         <button
-                                                            onClick={() => updateStatus(r.id, "approve")}
+                                                            onClick={() => callAction(r.id, "approve")}
                                                             className="bg-green-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-green-700 transition"
                                                         >
                                                             Approve
                                                         </button>
 
                                                         <button
-                                                            onClick={() => updateStatus(r.id, "reject")}
+                                                            onClick={() => callAction(r.id, "reject")}
                                                             className="bg-red-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-red-700 transition"
                                                         >
                                                             Reject
                                                         </button>
                                                     </div>
+                                                ) : isReturnedPending ? (
+                                                    <button
+                                                        onClick={() => callAction(r.id, "confirm-return")}
+                                                        className="bg-purple-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-purple-700 transition"
+                                                    >
+                                                        Confirm Returned
+                                                    </button>
                                                 ) : (
                                                     <div className="text-sm text-gray-500">
                                                         This request is{" "}
@@ -181,11 +179,9 @@ export default function RentalRequests() {
                                                 )}
                                             </div>
 
-                                            {/* Optional info box */}
                                             <div className="mt-4 bg-gray-50 border border-gray-200 rounded-xl p-4">
                                                 <p className="text-xs text-gray-500">
-                                                    Tip: After approving, you can later add payment + pickup
-                                                    steps.
+                                                    Tip: Confirm Returned will mark rental completed and tool becomes available again.
                                                 </p>
                                             </div>
                                         </div>
