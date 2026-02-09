@@ -8,6 +8,7 @@ const jwt = require("jsonwebtoken");
 const userRoutes = require("./routes/userRoutes");
 const toolRoutes = require("./routes/toolRoutes");
 const rentalRoutes = require("./routes/rentalRoutes");
+const profileRoutes = require("./routes/profileRoutes");
 const stripeWebhookRouter = require("./routes/stripeWebhook");
 
 dotenv.config();
@@ -154,11 +155,16 @@ app.use("/api/users", userRoutes);
 app.use("/api/tools", toolRoutes);
 app.use("/api/rentals", rentalRoutes);
 app.use("/api/stripe", stripeWebhookRouter);
+app.use("/api/profile", profileRoutes);
 
 app.get("/api/hello", (req, res) =>
     res.json({ message: "ToolRental Backend Ready!" })
 );
 
+/* TEST PROFILE ROUTE */
+app.get("/api/profile/test", (req, res) => {
+    res.json({ message: "Profile routes are loaded!" });
+});
 /* ======================
    SERVER
 ====================== */
