@@ -25,6 +25,7 @@ export default function Login() {
             if (response.ok) {
                 // Store JWT
                 localStorage.setItem('token', data.token);
+                window.dispatchEvent(new Event("login"));
                 setMessage('Login successful! Redirecting...');
                 setTimeout(() => navigate('/'), 1500);
             } else {

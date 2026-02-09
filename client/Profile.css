@@ -1,0 +1,163 @@
+.profile-container {
+  max-width: 800px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.profile-container h1 {
+  margin-bottom: 1.5rem;
+  color: #333;
+}
+
+.message {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+  border-radius: 4px;
+}
+
+.profile-view {
+  margin-top: 1rem;
+}
+
+.profile-info p {
+  margin: 0.75rem 0;
+  font-size: 1.1rem;
+}
+
+.profile-info strong {
+  color: #555;
+  margin-right: 0.5rem;
+}
+
+.profile-actions {
+  margin-top: 2rem;
+  display: flex;
+  gap: 1rem;
+}
+
+.profile-form {
+  margin-top: 1rem;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.form-group textarea {
+  resize: vertical;
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+button {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.btn-edit,
+.btn-save {
+  background: #007bff;
+  color: white;
+}
+
+.btn-edit:hover,
+.btn-save:hover {
+  background: #0056b3;
+}
+
+.btn-delete,
+.btn-confirm-delete {
+  background: #dc3545;
+  color: white;
+}
+
+.btn-delete:hover,
+.btn-confirm-delete:hover {
+  background: #c82333;
+}
+
+.btn-cancel {
+  background: #6c757d;
+  color: white;
+}
+
+.btn-cancel:hover {
+  background: #5a6268;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  max-width: 400px;
+  width: 90%;
+}
+
+.modal h2 {
+  margin-top: 0;
+  color: #dc3545;
+}
+
+.delete-input {
+  width: 100%;
+  padding: 0.75rem;
+  margin: 1rem 0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.loading {
+  text-align: center;
+  padding: 3rem;
+  font-size: 1.2rem;
+  color: #666;
+}

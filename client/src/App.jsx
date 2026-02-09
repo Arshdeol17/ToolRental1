@@ -9,9 +9,25 @@ import AddTool from "./pages/AddTool.jsx";
 import ToolDetails from "./pages/ToolDetails.jsx";
 import RentalRequests from "./pages/RentalRequests.jsx";
 import Notifications from "./pages/Notifications.jsx";
+import Profile from "./pages/Profile.jsx";
 
 export default function App() {
-    const token = localStorage.getItem("token");
+    const [token, setToken] = useState(localStorage.getItem("token"));
+    useEffect(() => {
+    const handleStorageChange = () => {
+        setToken(localStorage.getItem("token"));
+    };
+    
+    window.addEventListener("storage", handleStorageChange);
+    
+    // Also listen for custom event
+    window.addEventListener("login", handleStorageChange);
+    
+    return () => {
+        window.removeEventListener("storage", handleStorageChange);
+        window.removeEventListener("login", handleStorageChange);
+    };
+}, []);
 
     const [requestCount, setRequestCount] = useState(0); // owner requests
     const [notificationCount, setNotificationCount] = useState(0); // renter notifications
@@ -59,8 +75,9 @@ export default function App() {
     }, [token]);
 
     const handleLogout = () => {
-        localStorage.removeItem("token");
-        window.location.href = "/";
+       localStorage.removeItem("token");
+       setToken(null);
+       window.location.href = "/";
     };
 
     const Badge = ({ count }) =>
@@ -87,6 +104,13 @@ export default function App() {
                         <Link to="/tools" className="text-white hover:underline">
                             Browse Tools
                         </Link>
+
+                        {token && (
+                         
+                            <Link to="/profile" className="text-white hover:underline">
+                              Profile
+                            </Link>
+                        )}
 
                         {token && (
                             <Link
@@ -141,6 +165,7 @@ export default function App() {
                 <Route path="/tools/:id" element={<ToolDetails />} />
                 <Route path="/rentals/requests" element={<RentalRequests />} />
                 <Route path="/notifications" element={<Notifications />} />
+                <Route path="/profile" element={<Profile />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
             </Routes>
