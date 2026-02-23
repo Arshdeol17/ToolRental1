@@ -10,6 +10,7 @@ const toolRoutes = require("./routes/toolRoutes");
 const rentalRoutes = require("./routes/rentalRoutes");
 const profileRoutes = require("./routes/profileRoutes");
 const stripeWebhookRouter = require("./routes/stripeWebhook");
+const paymentRoutes = require("./routes/paymentRoutes");
 
 dotenv.config();
 
@@ -156,6 +157,7 @@ app.use("/api/tools", toolRoutes);
 app.use("/api/rentals", rentalRoutes);
 app.use("/api/stripe", stripeWebhookRouter);
 app.use("/api/profile", profileRoutes);
+app.use("/api/payment", paymentRoutes);
 
 app.get("/api/hello", (req, res) =>
     res.json({ message: "ToolRental Backend Ready!" })
