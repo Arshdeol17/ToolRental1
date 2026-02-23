@@ -52,29 +52,45 @@ export default function Tools() {
             return matchesQuery && matchesCategory;
         });
 
+        list = [...list]; // ✅ avoid mutating state
+
         if (sort === "price_asc") {
-            list = list.sort(
-                (a, b) => Number(a.price_per_day) - Number(b.price_per_day)
-            );
+            list.sort((a, b) => Number(a.price_per_day) - Number(b.price_per_day));
         } else if (sort === "price_desc") {
-            list = list.sort(
-                (a, b) => Number(b.price_per_day) - Number(a.price_per_day)
-            );
+            list.sort((a, b) => Number(b.price_per_day) - Number(a.price_per_day));
         } else if (sort === "name_asc") {
-            list = list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+            list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
         } else {
-            list = list.sort(
-                (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
-            );
+            list.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
         }
 
         return list;
     }, [tools, query, category, sort]);
 
+    // ⭐ Stars component (simple + reliable)
+    const Stars = ({ value = 0 }) => {
+        const rating = Number(value) || 0;
+        const filled = Math.round(rating); // 0..5
+
+        return (
+            <div className="flex items-center gap-1">
+                {[1, 2, 3, 4, 5].map((i) => (
+                    <span
+                        key={i}
+                        className={`text-sm ${i <= filled ? "text-yellow-500" : "text-gray-300"}`}
+                        title={`${rating.toFixed(1)} / 5`}
+                    >
+                        ★
+                    </span>
+                ))}
+            </div>
+        );
+    };
+
     return (
         <div className="min-h-screen bg-gray-50">
             <div className="max-w-7xl mx-auto px-6 py-10">
-                {/* ✅ Header row with Add Tool */}
+                {/* Header row */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                     <div>
                         <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">
@@ -87,23 +103,14 @@ export default function Tools() {
 
                     <Link
                         to="/tools/add"
-                        className="
-              inline-flex items-center gap-2
-              bg-blue-600 text-white
-              px-5 py-2.5
-              rounded-xl
-              font-semibold
-              shadow-sm
-              hover:bg-blue-700
-              transition
-            "
+                        className="inline-flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl font-semibold shadow-sm hover:bg-blue-700 transition"
                     >
                         <span className="text-lg leading-none">+</span>
                         Add Tool
                     </Link>
                 </div>
 
-                {/* Modern toolbar (no add button here now) */}
+                {/* Toolbar */}
                 <div className="bg-white/80 backdrop-blur border border-gray-200 rounded-2xl shadow-sm p-4 mb-6">
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
                         {/* Search */}
@@ -190,9 +197,7 @@ export default function Tools() {
                 {!loading && filtered.length === 0 ? (
                     <div className="bg-white border border-gray-200 rounded-2xl p-10 text-center shadow-sm">
                         <h2 className="text-lg font-bold text-gray-900">No tools found</h2>
-                        <p className="text-gray-600 mt-1">
-                            Try a different search or category.
-                        </p>
+                        <p className="text-gray-600 mt-1">Try a different search or category.</p>
                         <Link
                             to="/tools/add"
                             className="inline-block mt-4 bg-blue-600 text-white px-5 py-2.5 rounded-xl hover:bg-blue-700 transition font-semibold"
@@ -202,73 +207,82 @@ export default function Tools() {
                     </div>
                 ) : (
                     <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {filtered.map((tool) => (
-                            <Link
-                                key={tool.id}
-                                to={`/tools/${tool.id}`}
-                                className="group bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition overflow-hidden"
-                            >
-                                {/* Image */}
-                                <div className="relative">
-                                    {tool.image_url ? (
-                                        <img
-                                            src={`http://localhost:5000${tool.image_url}`}
-                                            alt={tool.name}
-                                            className="h-40 w-full object-cover"
-                                        />
-                                    ) : (
-                                        <div className="h-40 bg-gray-100 flex items-center justify-center text-gray-500">
-                                            No Image
+                        {filtered.map((tool) => {
+                            const avg = Number(tool.avg_rating || 0);
+                            const count = Number(tool.review_count || 0);
+
+                            return (
+                                <Link
+                                    key={tool.id}
+                                    to={`/tools/${tool.id}`}
+                                    className="group bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition overflow-hidden"
+                                >
+                                    {/* Image */}
+                                    <div className="relative">
+                                        {tool.image_url ? (
+                                            <img
+                                                src={`http://localhost:5000${tool.image_url}`}
+                                                alt={tool.name}
+                                                className="h-40 w-full object-cover"
+                                            />
+                                        ) : (
+                                            <div className="h-40 bg-gray-100 flex items-center justify-center text-gray-500">
+                                                No Image
+                                            </div>
+                                        )}
+
+                                        {/* Price badge */}
+                                        <div className="absolute top-3 left-3 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold border border-blue-100">
+                                            ${tool.price_per_day} / day
                                         </div>
-                                    )}
-
-                                    {/* ✅ Modern Price badge */}
-                                    <div
-                                        className="
-                      absolute top-3 left-3
-                      bg-blue-50 text-blue-700
-                      px-3 py-1
-                      rounded-full
-                      text-xs font-semibold
-                      border border-blue-100
-                    "
-                                    >
-                                        ${tool.price_per_day} / day
-                                    </div>
-                                </div>
-
-                                {/* Body */}
-                                <div className="p-4">
-                                    <h2 className="font-semibold text-[15px] text-gray-900 leading-snug group-hover:text-blue-700 transition">
-                                        {tool.name}
-                                    </h2>
-
-                                    <p className="text-sm text-gray-600 mt-1 line-clamp-2">
-                                        {tool.description || "No description"}
-                                    </p>
-
-                                    <div className="mt-3 flex items-center justify-between">
-                                        {/* ✅ Modern category pill */}
-                                        <span className="text-[11px] text-gray-500 bg-gray-100 rounded-full px-2.5 py-1">
-                                            {tool.category || "Uncategorized"}
-                                        </span>
-
-                                        <span className="text-xs text-blue-600 opacity-0 group-hover:opacity-100 transition">
-                                            View →
-                                        </span>
                                     </div>
 
-                                    {tool.owner_name && (
-                                        <p className="text-xs text-gray-400 mt-3">
-                                            by{" "}
-                                            <span className="font-medium text-gray-600">
-                                                {tool.owner_name}
+                                    {/* Body */}
+                                    <div className="p-4">
+                                        <h2 className="font-semibold text-[15px] text-gray-900 leading-snug group-hover:text-blue-700 transition">
+                                            {tool.name}
+                                        </h2>
+
+                                        {/* ⭐ Rating Row */}
+                                        <div className="mt-2 flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <Stars value={avg} />
+                                                <span className="text-xs text-gray-700 font-semibold">
+                                                    {avg.toFixed(1)}
+                                                </span>
+                                            </div>
+
+                                            <span className="text-xs text-gray-500">
+                                                ({count} review{count === 1 ? "" : "s"})
                                             </span>
+                                        </div>
+
+                                        <p className="text-sm text-gray-600 mt-2 line-clamp-2">
+                                            {tool.description || "No description"}
                                         </p>
-                                    )}
-                                </div>
-                            </Link>
-                        ))}
+
+                                        <div className="mt-3 flex items-center justify-between">
+                                            <span className="text-[11px] text-gray-500 bg-gray-100 rounded-full px-2.5 py-1">
+                                                {tool.category || "Uncategorized"}
+                                            </span>
+
+                                            <span className="text-xs text-blue-600 opacity-0 group-hover:opacity-100 transition">
+                                                View →
+                                            </span>
+                                        </div>
+
+                                        {tool.owner_name && (
+                                            <p className="text-xs text-gray-400 mt-3">
+                                                by{" "}
+                                                <span className="font-medium text-gray-600">
+                                                    {tool.owner_name}
+                                                </span>
+                                            </p>
+                                        )}
+                                    </div>
+                                </Link>
+                            );
+                        })}
                     </div>
                 )}
             </div>

@@ -1,4 +1,4 @@
-import { Routes, Route, Link } from "react-router-dom";
+﻿import { Routes, Route, Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 
 import Home from "./pages/Home.jsx";
@@ -7,11 +7,15 @@ import Register from "./pages/Register.jsx";
 import Tools from "./pages/Tools.jsx";
 import AddTool from "./pages/AddTool.jsx";
 import ToolDetails from "./pages/ToolDetails.jsx";
+import EditTool from "./pages/EditTool.jsx";
 import RentalRequests from "./pages/RentalRequests.jsx";
 import Notifications from "./pages/Notifications.jsx";
+import ChatPage from "./pages/ChatPage.jsx";
+import MyRentals from "./pages/MyRentals.jsx";
 import Profile from "./pages/Profile.jsx";
 
 export default function App() {
+    const API_BASE = "http://localhost:5000";
     const [token, setToken] = useState(localStorage.getItem("token"));
     useEffect(() => {
     const handleStorageChange = () => {
@@ -29,8 +33,44 @@ export default function App() {
     };
 }, []);
 
-    const [requestCount, setRequestCount] = useState(0); // owner requests
-    const [notificationCount, setNotificationCount] = useState(0); // renter notifications
+    // ✅ reactive auth state (fix navbar not updating)
+    const [token, setToken] = useState(localStorage.getItem("token"));
+    const [user, setUser] = useState(() => {
+        try {
+            return JSON.parse(localStorage.getItem("user") || "null");
+        } catch {
+            return null;
+        }
+    });
+
+    const [requestCount, setRequestCount] = useState(0);
+    const [notificationCount, setNotificationCount] = useState(0);
+
+    // ✅ keep auth state in sync (works even if localStorage changes)
+    useEffect(() => {
+        const syncAuth = () => {
+            setToken(localStorage.getItem("token"));
+            try {
+                setUser(JSON.parse(localStorage.getItem("user") || "null"));
+            } catch {
+                setUser(null);
+            }
+        };
+
+        // initial sync
+        syncAuth();
+
+        // if login/logout happens in another tab
+        window.addEventListener("storage", syncAuth);
+
+        // also listen for manual event from Login/Register pages (optional but great)
+        window.addEventListener("authChanged", syncAuth);
+
+        return () => {
+            window.removeEventListener("storage", syncAuth);
+            window.removeEventListener("authChanged", syncAuth);
+        };
+    }, []);
 
     const loadCounts = async () => {
         if (!token) {
@@ -41,7 +81,7 @@ export default function App() {
 
         try {
             // Owner requests
-            const reqRes = await fetch("http://localhost:5000/api/rentals/requests", {
+            const reqRes = await fetch(`${API_BASE}/api/rentals/requests`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const reqData = await reqRes.json().catch(() => []);
@@ -52,7 +92,7 @@ export default function App() {
             );
 
             // Renter notifications
-            const myRes = await fetch("http://localhost:5000/api/rentals/my", {
+            const myRes = await fetch(`${API_BASE}/api/rentals/my`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const myData = await myRes.json().catch(() => []);
@@ -66,7 +106,7 @@ export default function App() {
         }
     };
 
-    // Live polling
+    // Live polling for counts
     useEffect(() => {
         loadCounts();
         const interval = setInterval(loadCounts, 5000);
@@ -75,6 +115,17 @@ export default function App() {
     }, [token]);
 
     const handleLogout = () => {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+
+        // ✅ update navbar instantly
+        setToken(null);
+        setUser(null);
+
+        // optional: notify other components
+        window.dispatchEvent(new Event("authChanged"));
+
+        window.location.href = "/";
        localStorage.removeItem("token");
        setToken(null);
        window.location.href = "/";
@@ -113,32 +164,36 @@ export default function App() {
                         )}
 
                         {token && (
-                            <Link
-                                to="/notifications"
-                                className="text-white hover:underline flex items-center"
-                            >
+                            <Link to="/notifications" className="text-white hover:underline flex items-center">
                                 Notifications
                                 <Badge count={notificationCount} />
                             </Link>
                         )}
 
                         {token && (
-                            <Link
-                                to="/rentals/requests"
-                                className="text-white hover:underline flex items-center"
-                            >
+                            <Link to="/rentals/requests" className="text-white hover:underline flex items-center">
                                 Rental Requests
                                 <Badge count={requestCount} />
                             </Link>
                         )}
 
+                        {token && (
+                            <Link to="/my-rentals" className="text-white hover:underline">
+                                My Rentals
+                            </Link>
+                        )}
+
+
                         {token ? (
-                            <button
-                                onClick={handleLogout}
-                                className="text-white hover:underline"
-                            >
-                                Logout
-                            </button>
+                            <>
+                                <span className="text-white text-sm font-semibold">
+                                    Hi{user?.name ? `, ${user.name}` : ""} 👋
+                                </span>
+
+                                <button onClick={handleLogout} className="text-white hover:underline">
+                                    Logout
+                                </button>
+                            </>
                         ) : (
                             <>
                                 <Link to="/login" className="text-white hover:underline">
@@ -163,8 +218,12 @@ export default function App() {
                 <Route path="/tools" element={<Tools />} />
                 <Route path="/tools/add" element={<AddTool />} />
                 <Route path="/tools/:id" element={<ToolDetails />} />
+                <Route path="/tools/:id/edit" element={<EditTool />} />
                 <Route path="/rentals/requests" element={<RentalRequests />} />
                 <Route path="/notifications" element={<Notifications />} />
+                <Route path="/chat/:rentalId" element={<ChatPage />} />
+                <Route path="/my-rentals" element={<MyRentals />} />
+                <Route path="/my-rentals" element={<MyRentals />} />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />

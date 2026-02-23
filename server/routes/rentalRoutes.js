@@ -11,7 +11,11 @@ const auth = (req, res, next) => {
         const token = req.headers.authorization?.split(" ")[1];
         if (!token) return res.status(401).json({ message: "No token provided" });
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(
+            token,
+            process.env.JWT_SECRET || "toolrental-super-secret-2026"
+        );
+
         req.userId = decoded.userId;
         next();
     } catch {
@@ -19,11 +23,8 @@ const auth = (req, res, next) => {
     }
 };
 
-// helper: normalize status
-const normStatus = (s) => String(s || "").toLowerCase();
-
 /* =========================
-   CREATE RENTAL REQUEST
+   REQUEST RENTAL
    POST /api/rentals/request
 ========================= */
 router.post("/request", auth, async (req, res) => {
@@ -32,110 +33,36 @@ router.post("/request", auth, async (req, res) => {
         const { toolId, startDate, endDate } = req.body;
 
         if (!toolId || !startDate || !endDate) {
-            return res
-                .status(400)
-                .json({ message: "toolId, startDate, endDate required" });
+            return res.status(400).json({ message: "Missing fields" });
         }
 
-        // Tool exists?
-        const toolRes = await db.query(
-            `
-      SELECT id, owner_id, available, price_per_day, image_url, name
-      FROM tools
-      WHERE id = $1
-      `,
-            [toolId]
-        );
-
+        // Tool must exist and be available
+        const toolRes = await db.query(`SELECT * FROM tools WHERE id = $1`, [toolId]);
         const tool = toolRes.rows[0];
         if (!tool) return res.status(404).json({ message: "Tool not found" });
-        if (tool.available === false)
-            return res.status(400).json({ message: "Tool is not available" });
+        if (!tool.available) return res.status(400).json({ message: "Tool not available" });
 
-        // Can't rent your own tool
-        if (Number(tool.owner_id) === Number(req.userId)) {
+        // Prevent renting own tool
+        if (String(tool.owner_id) === String(req.userId)) {
             return res.status(400).json({ message: "You cannot rent your own tool" });
         }
 
-        // Date validation
-        const s = new Date(startDate);
-        const e = new Date(endDate);
-        if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime()) || e < s) {
-            return res.status(400).json({ message: "Invalid date range" });
-        }
-
-        // Prevent overlapping APPROVED rentals for same tool (case-insensitive)
-        const overlap = await db.query(
-            `
-      SELECT 1 FROM rentals
-      WHERE tool_id = $1
-        AND LOWER(status) = 'approved'
-        AND NOT (end_date < $2 OR start_date > $3)
-      LIMIT 1
-      `,
-            [toolId, startDate, endDate]
+        const created = await db.query(
+            `INSERT INTO rentals (tool_id, renter_id, start_date, end_date, status)
+       VALUES ($1, $2, $3, $4, 'pending')
+       RETURNING *`,
+            [toolId, req.userId, startDate, endDate]
         );
 
-        if (overlap.rows.length) {
-            return res
-                .status(400)
-                .json({ message: "Tool already rented for these dates" });
-        }
-
-        // Create request
-        const result = await db.query(
-            `
-      INSERT INTO rentals (tool_id, renter_id, owner_id, start_date, end_date, status)
-      VALUES ($1, $2, $3, $4, $5, 'pending')
-      RETURNING *
-      `,
-            [toolId, req.userId, tool.owner_id, startDate, endDate]
-        );
-
-        res.status(201).json({
-            message: "Rental request created",
-            rental: result.rows[0],
-        });
+        res.status(201).json(created.rows[0]);
     } catch (err) {
-        console.error("Create rental request error:", err);
-        res.status(500).json({ message: "Failed to create rental request" });
+        console.error("Rental request error:", err);
+        res.status(500).json({ message: "Failed to request rental" });
     }
 });
 
 /* =========================
-   MY REQUESTS (RENTER)
-   GET /api/rentals/my
-========================= */
-router.get("/my", auth, async (req, res) => {
-    try {
-        const db = req.app.get("db");
-
-        const result = await db.query(
-            `
-      SELECT r.*,
-             t.name AS tool_name,
-             t.image_url AS tool_image_url,
-             t.price_per_day,
-             u.name AS owner_name,
-             u.email AS owner_email
-      FROM rentals r
-      JOIN tools t ON r.tool_id = t.id
-      JOIN users u ON r.owner_id = u.id
-      WHERE r.renter_id = $1
-      ORDER BY r.created_at DESC
-      `,
-            [req.userId]
-        );
-
-        res.json(result.rows);
-    } catch (err) {
-        console.error("Get my rentals error:", err);
-        res.status(500).json({ message: err.message });
-    }
-});
-
-/* =========================
-   REQUESTS FOR MY TOOLS (OWNER)
+   OWNER: GET REQUESTS FOR MY TOOLS
    GET /api/rentals/requests
 ========================= */
 router.get("/requests", auth, async (req, res) => {
@@ -144,17 +71,28 @@ router.get("/requests", auth, async (req, res) => {
 
         const result = await db.query(
             `
-      SELECT r.*,
-             t.name AS tool_name,
-             t.image_url AS tool_image_url,
-             t.price_per_day,
-             u.name AS renter_name,
-             u.email AS renter_email
+      SELECT 
+        r.id,
+        r.tool_id,
+        r.renter_id,
+        r.start_date,
+        r.end_date,
+        r.status,
+        r.returned_at,
+        r.completed_at,
+
+        t.name AS tool_name,
+        t.price_per_day,
+        t.image_url AS tool_image_url,
+        t.owner_id,
+
+        u.name AS renter_name,
+        u.email AS renter_email
       FROM rentals r
       JOIN tools t ON r.tool_id = t.id
       JOIN users u ON r.renter_id = u.id
-      WHERE r.owner_id = $1
-      ORDER BY r.created_at DESC
+      WHERE t.owner_id = $1
+      ORDER BY r.id DESC
       `,
             [req.userId]
         );
@@ -162,7 +100,50 @@ router.get("/requests", auth, async (req, res) => {
         res.json(result.rows);
     } catch (err) {
         console.error("Get owner requests error:", err);
-        res.status(500).json({ message: err.message });
+        res.status(500).json({ message: "Failed to load requests" });
+    }
+});
+
+/* =========================
+   RENTER: GET MY RENTALS
+   GET /api/rentals/my
+========================= */
+router.get("/my", auth, async (req, res) => {
+    try {
+        const db = req.app.get("db");
+
+        const result = await db.query(
+            `
+      SELECT
+        r.id,
+        r.tool_id,
+        r.renter_id,
+        r.start_date,
+        r.end_date,
+        r.status,
+        r.returned_at,
+        r.completed_at,
+
+        t.name AS tool_name,
+        t.price_per_day,
+        t.image_url AS tool_image_url,
+        t.owner_id,
+
+        o.name AS owner_name,
+        o.email AS owner_email
+      FROM rentals r
+      JOIN tools t ON r.tool_id = t.id
+      JOIN users o ON t.owner_id = o.id
+      WHERE r.renter_id = $1
+      ORDER BY r.id DESC
+      `,
+            [req.userId]
+        );
+
+        res.json(result.rows);
+    } catch (err) {
+        console.error("Get my rentals error:", err);
+        res.status(500).json({ message: "Failed to load your rentals" });
     }
 });
 
@@ -173,45 +154,34 @@ router.get("/requests", auth, async (req, res) => {
 router.patch("/:id/approve", auth, async (req, res) => {
     try {
         const db = req.app.get("db");
-        const rentalId = req.params.id;
+        const { id } = req.params;
 
-        const existing = await db.query(
-            `SELECT * FROM rentals WHERE id = $1 AND owner_id = $2`,
-            [rentalId, req.userId]
-        );
-
-        const rental = existing.rows[0];
-        if (!rental) return res.status(404).json({ message: "Request not found" });
-        if (normStatus(rental.status) !== "pending") {
-            return res.status(400).json({ message: "Request is not pending" });
-        }
-
-        // overlap check again
-        const overlap = await db.query(
+        // ensure owner owns the tool
+        const check = await db.query(
             `
-      SELECT 1 FROM rentals
-      WHERE tool_id = $1
-        AND LOWER(status) = 'approved'
-        AND id <> $2
-        AND NOT (end_date < $3 OR start_date > $4)
-      LIMIT 1
+      SELECT r.*, t.owner_id
+      FROM rentals r
+      JOIN tools t ON r.tool_id = t.id
+      WHERE r.id = $1
       `,
-            [rental.tool_id, rental.id, rental.start_date, rental.end_date]
+            [id]
         );
 
-        if (overlap.rows.length) {
-            return res.status(400).json({ message: "Overlaps another approved rental" });
+        const rental = check.rows[0];
+        if (!rental) return res.status(404).json({ message: "Request not found" });
+        if (String(rental.owner_id) !== String(req.userId)) {
+            return res.status(403).json({ message: "Not allowed" });
         }
 
-        // Approve request
         const updated = await db.query(
-            `UPDATE rentals SET status = 'approved' WHERE id = $1 RETURNING *`,
-            [rentalId]
+            `UPDATE rentals SET status='approved' WHERE id=$1 RETURNING *`,
+            [id]
         );
 
-       
+        // optional: mark tool unavailable when approved
+        await db.query(`UPDATE tools SET available=false WHERE id=$1`, [rental.tool_id]);
 
-        res.json({ message: "Approved", rental: updated.rows[0] });
+        res.json(updated.rows[0]);
     } catch (err) {
         console.error("Approve error:", err);
         res.status(500).json({ message: "Failed to approve request" });
@@ -225,26 +195,120 @@ router.patch("/:id/approve", auth, async (req, res) => {
 router.patch("/:id/reject", auth, async (req, res) => {
     try {
         const db = req.app.get("db");
-        const rentalId = req.params.id;
+        const { id } = req.params;
 
-        const updated = await db.query(
+        const check = await db.query(
             `
-      UPDATE rentals
-      SET status = 'rejected'
-      WHERE id = $1 AND owner_id = $2 AND LOWER(status) = 'pending'
-      RETURNING *
+      SELECT r.*, t.owner_id
+      FROM rentals r
+      JOIN tools t ON r.tool_id = t.id
+      WHERE r.id = $1
       `,
-            [rentalId, req.userId]
+            [id]
         );
 
-        if (!updated.rows[0]) {
-            return res.status(404).json({ message: "Request not found or not pending" });
+        const rental = check.rows[0];
+        if (!rental) return res.status(404).json({ message: "Request not found" });
+        if (String(rental.owner_id) !== String(req.userId)) {
+            return res.status(403).json({ message: "Not allowed" });
         }
 
-        res.json({ message: "Rejected", rental: updated.rows[0] });
+        const updated = await db.query(
+            `UPDATE rentals SET status='rejected' WHERE id=$1 RETURNING *`,
+            [id]
+        );
+
+        res.json(updated.rows[0]);
     } catch (err) {
         console.error("Reject error:", err);
         res.status(500).json({ message: "Failed to reject request" });
+    }
+});
+
+/* =========================
+   RENTER: MARK RETURNED
+   PATCH /api/rentals/:id/return
+   approved -> returned_pending
+========================= */
+router.patch("/:id/return", auth, async (req, res) => {
+    try {
+        const db = req.app.get("db");
+        const { id } = req.params;
+
+        const { rows } = await db.query(`SELECT * FROM rentals WHERE id=$1`, [id]);
+        const rental = rows[0];
+        if (!rental) return res.status(404).json({ message: "Rental not found" });
+
+        if (String(rental.renter_id) !== String(req.userId)) {
+            return res.status(403).json({ message: "Not allowed" });
+        }
+
+        if (String(rental.status).toLowerCase() !== "approved") {
+            return res.status(400).json({ message: "Only approved rentals can be returned" });
+        }
+
+        const updated = await db.query(
+            `UPDATE rentals
+       SET status='returned_pending', returned_at=NOW()
+       WHERE id=$1
+       RETURNING *`,
+            [id]
+        );
+
+        res.json(updated.rows[0]);
+    } catch (err) {
+        console.error("Return error:", err);
+        res.status(500).json({ message: "Failed to mark returned" });
+    }
+});
+
+/* =========================
+   OWNER: CONFIRM RETURNED
+   PATCH /api/rentals/:id/confirm-return
+   returned_pending -> completed
+========================= */
+router.patch("/:id/confirm-return", auth, async (req, res) => {
+    try {
+        const db = req.app.get("db");
+        const { id } = req.params;
+
+        // load rental + tool to validate owner
+        const check = await db.query(
+            `
+      SELECT r.*, t.owner_id, t.id as tool_real_id
+      FROM rentals r
+      JOIN tools t ON r.tool_id = t.id
+      WHERE r.id = $1
+      `,
+            [id]
+        );
+
+        const rental = check.rows[0];
+        if (!rental) return res.status(404).json({ message: "Rental not found" });
+
+        if (String(rental.owner_id) !== String(req.userId)) {
+            return res.status(403).json({ message: "Not allowed" });
+        }
+
+        if (String(rental.status).toLowerCase() !== "returned_pending") {
+            return res.status(400).json({ message: "Rental is not waiting for confirmation" });
+        }
+
+        const updated = await db.query(
+            `UPDATE rentals
+       SET status='completed', completed_at=NOW()
+       WHERE id=$1
+       RETURNING *`,
+            [id]
+        );
+
+        // tool becomes available again
+        await db.query(`UPDATE tools SET available=true WHERE id=$1`, [rental.tool_id]);
+
+        res.json(updated.rows[0]);
+    } catch (err) {
+        console.error("Confirm return error:", err);
+        res.status(500).json({ message: "Failed to confirm return" });
     }
 });
 

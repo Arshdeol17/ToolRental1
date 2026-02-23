@@ -1,8 +1,24 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { jwtDecode } from "jwt-decode";
 
 export default function ToolDetails() {
     const { id } = useParams();
+    const navigate = useNavigate();
+
+    const token = localStorage.getItem("token");
+
+    // ✅ Get logged-in user id from token
+    let myUserId = null;
+    try {
+        if (token) {
+            const decoded = jwtDecode(token);
+            // your backend signs { userId: ... }
+            myUserId = decoded?.userId ?? decoded?.id ?? decoded?.user_id ?? null;
+        }
+    } catch {
+        myUserId = null;
+    }
 
     const [tool, setTool] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -14,6 +30,20 @@ export default function ToolDetails() {
     const [endDate, setEndDate] = useState("");
     const [requesting, setRequesting] = useState(false);
 
+    // ✅ Reviews state
+    const [reviews, setReviews] = useState([]);
+    const [reviewLoading, setReviewLoading] = useState(true);
+    const [avgRating, setAvgRating] = useState(0);
+    const [reviewCount, setReviewCount] = useState(0);
+
+    const [canReview, setCanReview] = useState(false);
+    const [myRating, setMyRating] = useState(5);
+    const [myComment, setMyComment] = useState("");
+    const [submittingReview, setSubmittingReview] = useState(false);
+
+    // -----------------------
+    // Load Tool
+    // -----------------------
     useEffect(() => {
         let isMounted = true;
 
@@ -56,6 +86,73 @@ export default function ToolDetails() {
         };
     }, [id]);
 
+    // -----------------------
+    // Load Reviews + Summary
+    // -----------------------
+    useEffect(() => {
+        const loadReviews = async () => {
+            try {
+                setReviewLoading(true);
+
+                const [revRes, sumRes] = await Promise.all([
+                    fetch(`http://localhost:5000/api/reviews/tool/${id}`),
+                    fetch(`http://localhost:5000/api/reviews/tool/${id}/summary`),
+                ]);
+
+                const revData = await revRes.json().catch(() => []);
+                const sumData = await sumRes.json().catch(() => ({}));
+
+                setReviews(Array.isArray(revData) ? revData : []);
+                setAvgRating(Number(sumData.avg_rating || 0));
+                setReviewCount(Number(sumData.review_count || 0));
+            } catch (e) {
+                console.error(e);
+                setReviews([]);
+                setAvgRating(0);
+                setReviewCount(0);
+            } finally {
+                setReviewLoading(false);
+            }
+        };
+
+        loadReviews();
+    }, [id]);
+
+    // -----------------------
+    // Check if renter can review (must have COMPLETED rental)
+    // -----------------------
+    useEffect(() => {
+        const checkEligibility = async () => {
+            if (!token) {
+                setCanReview(false);
+                return;
+            }
+
+            try {
+                const res = await fetch("http://localhost:5000/api/rentals/my", {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+
+                const data = await res.json().catch(() => []);
+
+                const ok = Array.isArray(data)
+                    ? data.some(
+                        (r) =>
+                            String(r.tool_id) === String(id) &&
+                            String(r.status || "").toLowerCase() === "completed"
+                    )
+                    : false;
+
+                setCanReview(ok);
+            } catch (e) {
+                console.error(e);
+                setCanReview(false);
+            }
+        };
+
+        checkEligibility();
+    }, [id, token]);
+
     const closeModal = () => {
         setShowRentModal(false);
         setStartDate("");
@@ -63,16 +160,18 @@ export default function ToolDetails() {
     };
 
     const openModal = () => {
-        const token = localStorage.getItem("token");
         if (!token) {
             alert("Please login first to rent a tool.");
+            return;
+        }
+        if (!tool?.available) {
+            alert("This tool is currently unavailable.");
             return;
         }
         setShowRentModal(true);
     };
 
     const handleRequestRental = async () => {
-        const token = localStorage.getItem("token");
         if (!token) {
             alert("Please login first to rent a tool.");
             return;
@@ -121,6 +220,7 @@ export default function ToolDetails() {
         };
         if (showRentModal) window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [showRentModal]);
 
     const rentDisabled = requesting || !startDate || !endDate;
@@ -141,6 +241,143 @@ export default function ToolDetails() {
         []
     );
 
+    const ownerId = tool?.owner_id ?? tool?.user_id ?? tool?.ownerId ?? null;
+    const isOwner = myUserId && ownerId && String(myUserId) === String(ownerId);
+
+    const handleDeleteTool = async () => {
+        if (!token) {
+            alert("Please login first.");
+            return;
+        }
+
+        const ok = window.confirm("Delete this tool? This cannot be undone.");
+        if (!ok) return;
+
+        try {
+            const res = await fetch(`http://localhost:5000/api/tools/${tool.id}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` },
+            });
+
+            const data = await res.json().catch(() => ({}));
+
+            if (res.status === 409) {
+                alert(
+                    data.message ||
+                    "This tool has approved rentals, so it cannot be deleted."
+                );
+                return;
+            }
+
+            if (!res.ok) {
+                alert(data.message || data.error || "Failed to delete tool.");
+                return;
+            }
+
+            alert("✅ Tool deleted successfully");
+            navigate("/tools");
+        } catch (err) {
+            console.error(err);
+            alert("Failed to delete tool.");
+        }
+    };
+
+    // ✅ PATCH availability (persists)
+    const handleToggleAvailability = async () => {
+        if (!token) {
+            alert("Please login first.");
+            return;
+        }
+
+        try {
+            const res = await fetch(
+                `http://localhost:5000/api/tools/${tool.id}/availability`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ available: !tool.available }),
+                }
+            );
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                alert(data.message || data.error || "Failed to update availability");
+                return;
+            }
+
+            setTool(data);
+        } catch (err) {
+            console.error(err);
+            alert("Failed to update availability");
+        }
+    };
+
+    const AvailabilityPill = () => (
+        <span
+            className={`border px-3 py-1 rounded-full text-xs font-semibold ${tool?.available
+                    ? "bg-green-50 text-green-700 border-green-100"
+                    : "bg-gray-100 text-gray-700 border-gray-200"
+                }`}
+        >
+            {tool?.available ? "Available" : "Unavailable"}
+        </span>
+    );
+
+    // ✅ Submit review
+    const submitReview = async () => {
+        if (!token) {
+            alert("Please login first.");
+            return;
+        }
+
+        try {
+            setSubmittingReview(true);
+
+            const res = await fetch(`http://localhost:5000/api/reviews/tool/${id}`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ rating: myRating, comment: myComment }),
+            });
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                alert(data.message || "Failed to submit review");
+                return;
+            }
+
+            alert("✅ Review submitted!");
+            setMyComment("");
+            setMyRating(5);
+
+            // Reload reviews + summary
+            const [revRes, sumRes] = await Promise.all([
+                fetch(`http://localhost:5000/api/reviews/tool/${id}`),
+                fetch(`http://localhost:5000/api/reviews/tool/${id}/summary`),
+            ]);
+
+            const revData = await revRes.json().catch(() => []);
+            const sumData = await sumRes.json().catch(() => ({}));
+
+            setReviews(Array.isArray(revData) ? revData : []);
+            setAvgRating(Number(sumData.avg_rating || 0));
+            setReviewCount(Number(sumData.review_count || 0));
+        } catch (e) {
+            console.error(e);
+            alert("Failed to submit review");
+        } finally {
+            setSubmittingReview(false);
+        }
+    };
+
+    // -----------------------
+    // Renders
+    // -----------------------
     if (loading) {
         return (
             <div className="max-w-5xl mx-auto px-6 py-12">
@@ -166,18 +403,15 @@ export default function ToolDetails() {
 
     return (
         <div className="min-h-screen bg-gray-50">
-            {/* ✅ Smaller overall container */}
             <div className="max-w-5xl mx-auto px-6 py-10">
                 <Link to="/tools" className="text-blue-600 hover:underline">
                     ← Back to tools
                 </Link>
 
-                {/* ✅ Tighter layout (10 columns instead of 12) */}
                 <div className="mt-6 grid grid-cols-1 lg:grid-cols-10 gap-6">
                     {/* LEFT */}
                     <div className="lg:col-span-6">
                         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                            {/* Image (still full, but card is smaller now) */}
                             <div className="relative">
                                 {tool.image_url ? (
                                     <img
@@ -191,18 +425,14 @@ export default function ToolDetails() {
                                     </div>
                                 )}
 
-                                {/* Pills */}
                                 <div className="absolute top-4 left-4 flex items-center gap-2">
                                     <span className="bg-blue-50 text-blue-700 border border-blue-100 px-3 py-1 rounded-full text-xs font-semibold">
                                         ${tool.price_per_day} / day
                                     </span>
-                                    <span className="bg-green-50 text-green-700 border border-green-100 px-3 py-1 rounded-full text-xs font-semibold">
-                                        Available
-                                    </span>
+                                    <AvailabilityPill />
                                 </div>
                             </div>
 
-                            {/* Content */}
                             <div className="p-6">
                                 <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">
                                     {tool.name}
@@ -212,7 +442,6 @@ export default function ToolDetails() {
                                     {tool.description || "No description provided."}
                                 </p>
 
-                                {/* Quick info cards */}
                                 <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
                                     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                                         <p className="text-xs text-gray-500">Category</p>
@@ -238,7 +467,6 @@ export default function ToolDetails() {
                             </div>
                         </div>
 
-                        {/* Extra sections */}
                         <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
                                 <h2 className="text-base font-bold text-gray-900">
@@ -271,6 +499,100 @@ export default function ToolDetails() {
                                 </div>
                             </div>
                         </div>
+
+                        {/* ✅ REVIEWS SECTION */}
+                        <div className="mt-6 bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-base font-bold text-gray-900">Reviews</h2>
+
+                                <div className="text-sm text-gray-700">
+                                    <span className="font-semibold">
+                                        {Number(avgRating || 0).toFixed(1)}
+                                    </span>{" "}
+                                    / 5
+                                    <span className="text-gray-400"> ({reviewCount})</span>
+                                </div>
+                            </div>
+
+                            {canReview ? (
+                                <div className="mt-4 border rounded-xl p-4 bg-gray-50">
+                                    <p className="text-sm font-semibold text-gray-900 mb-2">
+                                        Leave a review
+                                    </p>
+
+                                    <label className="block text-sm text-gray-700 mb-1">
+                                        Rating
+                                    </label>
+                                    <select
+                                        value={myRating}
+                                        onChange={(e) => setMyRating(Number(e.target.value))}
+                                        className="w-full border border-gray-200 rounded-xl px-3 py-2 bg-white"
+                                    >
+                                        <option value={5}>5 - Excellent</option>
+                                        <option value={4}>4 - Good</option>
+                                        <option value={3}>3 - Okay</option>
+                                        <option value={2}>2 - Bad</option>
+                                        <option value={1}>1 - Terrible</option>
+                                    </select>
+
+                                    <label className="block text-sm text-gray-700 mt-3 mb-1">
+                                        Comment
+                                    </label>
+                                    <textarea
+                                        value={myComment}
+                                        onChange={(e) => setMyComment(e.target.value)}
+                                        rows={3}
+                                        placeholder="Write your feedback..."
+                                        className="w-full border border-gray-200 rounded-xl px-3 py-2 bg-white"
+                                    />
+
+                                    <button
+                                        disabled={submittingReview}
+                                        onClick={submitReview}
+                                        className="mt-3 bg-blue-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-60"
+                                    >
+                                        {submittingReview ? "Submitting..." : "Submit Review"}
+                                    </button>
+                                </div>
+                            ) : (
+                                <p className="mt-3 text-sm text-gray-500">
+                                    You can review only after the rental is completed (returned +
+                                    confirmed).
+                                </p>
+                            )}
+
+                            <div className="mt-5">
+                                {reviewLoading ? (
+                                    <p className="text-sm text-gray-500">Loading reviews...</p>
+                                ) : reviews.length === 0 ? (
+                                    <p className="text-sm text-gray-500">No reviews yet.</p>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {reviews.map((r) => (
+                                            <div
+                                                key={r.id}
+                                                className="border border-gray-200 rounded-xl p-4"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-sm font-semibold text-gray-900">
+                                                        {r.reviewer_name}
+                                                    </p>
+                                                    <p className="text-sm text-gray-700">{r.rating} / 5</p>
+                                                </div>
+                                                {r.comment && (
+                                                    <p className="text-sm text-gray-600 mt-2">
+                                                        {r.comment}
+                                                    </p>
+                                                )}
+                                                <p className="text-xs text-gray-400 mt-2">
+                                                    {String(r.created_at).slice(0, 10)}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
 
                     {/* RIGHT */}
@@ -289,9 +611,7 @@ export default function ToolDetails() {
                                         </p>
                                     </div>
 
-                                    <span className="bg-green-50 text-green-700 border border-green-100 px-3 py-1 rounded-full text-xs font-semibold">
-                                        Available
-                                    </span>
+                                    <AvailabilityPill />
                                 </div>
 
                                 <div className="mt-4 rounded-xl bg-gray-50 border border-gray-200 p-4">
@@ -303,14 +623,50 @@ export default function ToolDetails() {
 
                                 <button
                                     onClick={openModal}
-                                    className="mt-5 w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition"
+                                    disabled={!tool.available}
+                                    className={`mt-5 w-full py-3 rounded-xl font-semibold transition ${tool.available
+                                            ? "bg-blue-600 text-white hover:bg-blue-700"
+                                            : "bg-gray-400 text-white cursor-not-allowed"
+                                        }`}
                                 >
-                                    Rent this tool
+                                    {tool.available ? "Rent this tool" : "Unavailable"}
                                 </button>
 
                                 <p className="text-xs text-gray-500 mt-3">
                                     You won’t be charged until the owner approves.
                                 </p>
+
+                                {/* OWNER CONTROLS */}
+                                {isOwner && (
+                                    <div className="mt-5 border-t pt-4">
+                                        <p className="text-sm font-bold text-gray-900 mb-3">
+                                            Owner controls
+                                        </p>
+
+                                        <div className="flex flex-col gap-2">
+                                            <Link
+                                                to={`/tools/${tool.id}/edit`}
+                                                className="w-full text-center bg-blue-600 text-white py-2.5 rounded-xl font-semibold hover:bg-blue-700 transition"
+                                            >
+                                                Edit Tool
+                                            </Link>
+
+                                            <button
+                                                onClick={handleToggleAvailability}
+                                                className="w-full border border-gray-200 text-gray-800 py-2.5 rounded-xl font-semibold hover:bg-gray-50 transition"
+                                            >
+                                                {tool.available ? "Mark Unavailable" : "Mark Available"}
+                                            </button>
+
+                                            <button
+                                                onClick={handleDeleteTool}
+                                                className="w-full bg-red-600 text-white py-2.5 rounded-xl font-semibold hover:bg-red-700 transition"
+                                            >
+                                                Delete Tool
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
