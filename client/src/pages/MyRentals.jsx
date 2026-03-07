@@ -1,5 +1,10 @@
-﻿import { useEffect, useState } from "react";
+﻿// client/src/pages/MyRentals.jsx (READY TO PASTE)
+
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import PaymentModal from "../pages/PaymentModal.jsx";
+
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
 
 export default function MyRentals() {
     const [items, setItems] = useState([]);
@@ -8,10 +13,14 @@ export default function MyRentals() {
     const token = localStorage.getItem("token");
     const navigate = useNavigate();
 
+    // ✅ Hosted Checkout Modal state
+    const [payOpen, setPayOpen] = useState(false);
+    const [payRentalId, setPayRentalId] = useState(null);
+
     const load = async () => {
         try {
             setLoading(true);
-            const res = await fetch("http://localhost:5000/api/rentals/my", {
+            const res = await fetch(`${API_BASE}/api/rentals/my`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await res.json().catch(() => []);
@@ -32,7 +41,7 @@ export default function MyRentals() {
 
     const markReturned = async (rentalId) => {
         try {
-            const res = await fetch(`http://localhost:5000/api/rentals/${rentalId}/return`, {
+            const res = await fetch(`${API_BASE}/api/rentals/${rentalId}/return`, {
                 method: "PATCH",
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -60,6 +69,16 @@ export default function MyRentals() {
         return "bg-yellow-50 text-yellow-700 border-yellow-100";
     };
 
+    const openPayment = (rentalId) => {
+        const rid = Number(rentalId);
+        if (!rid) {
+            alert("Missing rentalId (r.id is empty).");
+            return;
+        }
+        setPayRentalId(rid);
+        setPayOpen(true);
+    };
+
     if (!token) {
         return (
             <div className="min-h-screen bg-gray-50">
@@ -76,6 +95,13 @@ export default function MyRentals() {
 
     return (
         <div className="min-h-screen bg-gray-50">
+            {/* ✅ Stripe Hosted Checkout Modal */}
+            <PaymentModal
+                open={payOpen}
+                onClose={() => setPayOpen(false)}
+                rentalId={payRentalId}
+            />
+
             <div className="max-w-6xl mx-auto px-6 py-10">
                 <div className="flex items-end justify-between gap-3">
                     <div>
@@ -83,7 +109,7 @@ export default function MyRentals() {
                             My Rentals
                         </h1>
                         <p className="text-sm text-gray-500 mt-1">
-                            Your rented tools + return confirmation workflow.
+                            Approved → Pay → Mark Returned → Owner Confirms → Completed → Review
                         </p>
                     </div>
 
@@ -112,6 +138,7 @@ export default function MyRentals() {
                     <div className="mt-6 space-y-4">
                         {items.map((r) => {
                             const status = String(r.status || "").toLowerCase();
+                            const isPaid = !!r.is_paid;
 
                             return (
                                 <div
@@ -119,11 +146,10 @@ export default function MyRentals() {
                                     className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden"
                                 >
                                     <div className="grid grid-cols-1 md:grid-cols-12">
-                                        {/* Image */}
                                         <div className="md:col-span-3">
                                             {r.tool_image_url ? (
                                                 <img
-                                                    src={`http://localhost:5000${r.tool_image_url}`}
+                                                    src={`${API_BASE}${r.tool_image_url}`}
                                                     alt={r.tool_name}
                                                     className="w-full h-48 md:h-full object-cover"
                                                 />
@@ -134,7 +160,6 @@ export default function MyRentals() {
                                             )}
                                         </div>
 
-                                        {/* Info */}
                                         <div className="md:col-span-9 p-5">
                                             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                                                 <div>
@@ -153,6 +178,10 @@ export default function MyRentals() {
                                                             {String(r.status || "").toUpperCase()}
                                                         </span>
 
+                                                        <span className="bg-gray-50 text-gray-700 border border-gray-100 px-3 py-1 rounded-full text-xs font-semibold">
+                                                            {isPaid ? "PAID" : "UNPAID"}
+                                                        </span>
+
                                                         <span className="text-xs text-gray-500">
                                                             {String(r.start_date).slice(0, 10)} →{" "}
                                                             {String(r.end_date).slice(0, 10)}
@@ -165,9 +194,17 @@ export default function MyRentals() {
                                                     </div>
                                                 </div>
 
-                                                {/* Actions */}
                                                 <div className="flex flex-col gap-2 items-end">
-                                                    {status === "approved" && (
+                                                    {status === "approved" && !isPaid && (
+                                                        <button
+                                                            onClick={() => openPayment(r.id)}
+                                                            className="bg-green-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-green-700 transition"
+                                                        >
+                                                            Pay Now
+                                                        </button>
+                                                    )}
+
+                                                    {status === "approved" && isPaid && (
                                                         <button
                                                             onClick={() => markReturned(r.id)}
                                                             className="bg-blue-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-blue-700 transition"
@@ -191,10 +228,7 @@ export default function MyRentals() {
                                                         </button>
                                                     )}
 
-                                                    <Link
-                                                        to={`/tools/${r.tool_id}`}
-                                                        className="text-sm text-blue-600 hover:underline"
-                                                    >
+                                                    <Link to={`/tools/${r.tool_id}`} className="text-sm text-blue-600 hover:underline">
                                                         View Tool →
                                                     </Link>
                                                 </div>
@@ -202,7 +236,7 @@ export default function MyRentals() {
 
                                             <div className="mt-4 bg-gray-50 border border-gray-200 rounded-xl p-4">
                                                 <p className="text-xs text-gray-500">
-                                                    Workflow: Approved → Mark Returned → Owner Confirms → Completed → Review
+                                                    Workflow: Approved → Pay → Mark Returned → Owner Confirms → Completed → Review
                                                 </p>
                                             </div>
                                         </div>
