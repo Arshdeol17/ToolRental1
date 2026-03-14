@@ -50,7 +50,7 @@ router.post("/", auth, upload.single("image"), async (req, res) => {
     try {
         const db = req.app.get("db");
 
-        const { name, description, category, condition, price } = req.body;
+        const { name, description, category, condition, price, latitude, longitude, address } = req.body;
         if (!name || !price) {
             return res.status(400).json({ message: "Name and price are required" });
         }
@@ -59,12 +59,11 @@ router.post("/", auth, upload.single("image"), async (req, res) => {
 
         const result = await db.query(
             `
-      INSERT INTO tools
-      (name, description, category, condition, price_per_day, image_url, owner_id, available)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, true)
-      RETURNING *
-      `,
-            [name, description, category, condition, price, imageUrl, req.userId]
+            INSERT INTO tools
+            (name, description, category, condition, price_per_day, image_url, owner_id, available, latitude, longitude, address)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $9, $10)
+            RETURNING * `,
+            [name, description, category, condition, price, imageUrl, req.userId, latitude, longitude, address]
         );
 
         res.status(201).json(result.rows[0]);
@@ -115,6 +114,46 @@ router.get("/my", auth, async (req, res) => {
 
         res.json(result.rows);
     } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+/* =========================
+   FILTER TOOLS BY LOCATION
+   GET /filter-by-location?lat=xxx&lng=xxx&radius=xxx
+========================= */
+router.get("/filter-by-location", async (req, res) => {
+    try {
+        const db = req.app.get("db");
+        const { lat, lng, radius } = req.query;
+
+        if (!lat || !lng) {
+            return res.status(400).json({ message: "Latitude and longitude required" });
+        }
+
+        const radiusKm = radius || 50; // Default 50km radius
+
+        // Haversine formula to calculate distance
+        const result = await db.query(
+            `
+            SELECT t.*, u.name AS owner_name,
+                   (6371 * acos(
+                       cos(radians($1)) * cos(radians(latitude)) *
+                       cos(radians(longitude) - radians($2)) +
+                       sin(radians($1)) * sin(radians(latitude))
+                   )) AS distance
+            FROM tools t
+            JOIN users u ON t.owner_id = u.id
+            WHERE latitude IS NOT NULL 
+              AND longitude IS NOT NULL
+            HAVING distance <= $3
+            ORDER BY distance ASC
+            `,
+            [lat, lng, radiusKm]
+        );
+
+        res.json(result.rows);
+    } catch (err) {
+        console.error("Location filter error:", err);
         res.status(500).json({ error: err.message });
     }
 });

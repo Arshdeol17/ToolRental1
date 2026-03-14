@@ -1,9 +1,14 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import LocationFilter from "../components/LocationFilter";
 
 export default function Tools() {
     const [tools, setTools] = useState([]);
     const [loading, setLoading] = useState(true);
+    const handleLocationFilter = (filterData) => {
+           console.log("Filter by:", filterData);
+         // For now just log it - we'll implement the actual filtering next
+         };
 
     // UI state
     const [query, setQuery] = useState("");
@@ -73,7 +78,11 @@ export default function Tools() {
 
     return (
         <div className="min-h-screen bg-gray-50">
-            <div className="max-w-7xl mx-auto px-6 py-10">
+            <div className="max-w-6xl mx-auto px-4">
+                <LocationFilter onFilterChange={handleLocationFilter} />
+  
+                
+            
                 {/* ✅ Header row with Add Tool */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                     <div>
