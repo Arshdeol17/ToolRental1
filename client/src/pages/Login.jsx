@@ -1,100 +1,95 @@
-﻿import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+﻿import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
 
 export default function Login() {
-    const [formData, setFormData] = useState({ email: '', password: '' });
-    const [loading, setLoading] = useState(false);
-    const [message, setMessage] = useState('');
     const navigate = useNavigate();
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [loading, setLoading] = useState(false);
 
-    const handleChange = (e) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
-    };
-
-    const handleSubmit = async (e) => {
+    const submit = async (e) => {
         e.preventDefault();
         setLoading(true);
-        try {
-            const response = await fetch('http://localhost:5000/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData)
-            });
-            const data = await response.json();
 
-            if (response.ok) {
-                // Store JWT
-                localStorage.setItem('token', data.token);
-                window.dispatchEvent(new Event("login"));
-                setMessage('Login successful! Redirecting...');
-                setTimeout(() => navigate('/'), 1500);
-            } else {
-                setMessage(data.message || 'Login failed');
+        try {
+            const res = await fetch(`${API_BASE}/api/auth/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password }),
+            });
+
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                alert(data.message || "Login failed");
+                setLoading(false);
+                return;
             }
-        } catch (error) {
-            setMessage('Server error. Check backend.');
+
+            // ✅ IMPORTANT: save BOTH token + user
+            localStorage.setItem("token", data.token);
+            localStorage.setItem("user", JSON.stringify(data.user));
+
+            // ✅ notify app to refresh nav state
+            window.dispatchEvent(new Event("login"));
+            window.dispatchEvent(new Event("storage"));
+
+            navigate("/profile");
+        } catch (err) {
+            console.error(err);
+            alert("Login failed");
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-blue-100 py-12 px-4">
-            <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 space-y-8">
-                <div className="text-center">
-                    <h2 className="text-3xl font-bold text-gray-900">Welcome Back</h2>
-                    <p className="text-gray-500 mt-2">Sign in to your account</p>
-                </div>
+        <div className="min-h-screen bg-gray-50">
+            <div className="max-w-md mx-auto px-6 py-10">
+                <h1 className="text-3xl font-extrabold text-gray-900">Login</h1>
+                <p className="text-sm text-gray-600 mt-1">Login to your ToolRental account.</p>
 
-                {message && (
-                    <div className={`p-4 rounded-lg ${message.includes('successful') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                        {message}
-                    </div>
-                )}
-
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form onSubmit={submit} className="mt-6 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm space-y-4">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                        <label className="block text-sm font-semibold text-gray-700">Email</label>
                         <input
-                            name="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
                             type="email"
+                            className="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2"
+                            placeholder="you@email.com"
                             required
-                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="john@example.com"
-                            value={formData.email}
-                            onChange={handleChange}
                         />
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                        <label className="block text-sm font-semibold text-gray-700">Password</label>
                         <input
-                            name="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
                             type="password"
-                            required
-                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2"
                             placeholder="••••••••"
-                            value={formData.password}
-                            onChange={handleChange}
+                            required
                         />
                     </div>
 
                     <button
-                        type="submit"
                         disabled={loading}
-                        className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-4 px-6 rounded-xl font-semibold text-lg shadow-lg hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                        className="w-full bg-blue-600 text-white px-4 py-2.5 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-60"
                     >
-                        {loading ? 'Signing In...' : 'Sign In'}
+                        {loading ? "Logging in..." : "Login"}
                     </button>
-                </form>
 
-                <div className="text-center">
                     <p className="text-sm text-gray-600">
-                        Don't have an account?{' '}
-                        <Link to="/register" className="font-medium text-blue-600 hover:text-blue-500">
-                            Create one
+                        Don’t have an account?{" "}
+                        <Link to="/register" className="text-blue-600 hover:underline">
+                            Register →
                         </Link>
                     </p>
-                </div>
+                </form>
             </div>
         </div>
     );
