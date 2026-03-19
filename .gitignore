@@ -13,3 +13,9 @@ ToolRental1.sln
 
 # OS
 .DS_Store
+
+# Build files
+bin/
+obj/
+server/bin/
+server/obj/
