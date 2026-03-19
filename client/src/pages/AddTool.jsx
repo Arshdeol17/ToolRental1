@@ -5,12 +5,14 @@ export default function AddTool() {
     const navigate = useNavigate();
 
     const [formData, setFormData] = useState({
-        name: "",
-        description: "",
-        category: "",
-        condition: "",
-        price: "",
-        image: null,
+     name: "",
+     description: "",
+     category: "",
+     condition: "",
+     price: "",
+     address: "",
+     latitude: "",
+     longitude: "",
     });
 
     const [preview, setPreview] = useState(null);
@@ -60,9 +62,10 @@ export default function AddTool() {
                 try {
                     const err = await res.json();
                     msg = err.message || err.error || msg;
-                } catch { }
+                } catch { 
                 alert(msg);
                 return;
+                }
             }
 
             // ✅ Success: go back to tools list
@@ -184,6 +187,50 @@ export default function AddTool() {
                         />
                     )}
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Address/Location
+                   </label>
+                   <input
+                    type="text"
+                    name="address"
+                    value={formData.address}
+                    onChange={handleChange}
+                    placeholder="123 Main St, City, Province"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-2">
+                       Latitude (Optional)
+                   </label>
+                   <input
+                       type="number"
+                       step="0.000001"
+                       name="latitude"
+                       value={formData.latitude}
+                       onChange={handleChange}
+                       placeholder="51.0447"
+                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                 <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Longitude (Optional)
+                   </label>
+                   <input
+                      type="number"
+                      step="0.000001"
+                      name="longitude"
+                      value={formData.longitude}
+                      onChange={handleChange}
+                      placeholder="-114.0719"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                   />
+             </div>
+             </div>
 
                 {/* SUBMIT BUTTON */}
                 <button

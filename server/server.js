@@ -26,6 +26,7 @@ const aiRoutes = require("./routes/aiRoutes");
 // Stripe
 const stripeRoutes = require("./routes/stripeRoutes");
 const stripeWebhookRouter = require("./routes/stripeWebhook");
+const paymentRoutes = require("./routes/paymentRoutes");
 
 const app = express();
 
@@ -182,6 +183,9 @@ app.get("/api/auth/me", async (req, res) => {
 app.use("/api/users", userRoutes);
 app.use("/api/tools", toolRoutes);
 app.use("/api/rentals", rentalRoutes);
+app.use("/api/stripe", stripeWebhookRouter);
+app.use("/api/profile", profileRoutes);
+app.use("/api/payment", paymentRoutes);
 app.use("/api/password", passwordRoutes);
 
 // ✅ Transactions
