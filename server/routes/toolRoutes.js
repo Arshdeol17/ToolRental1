@@ -1,88 +1,73 @@
 ﻿const express = require("express");
-const multer = require("multer");
+const router = express.Router();
 const jwt = require("jsonwebtoken");
+const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-const router = express.Router();
+// =========================
+// Multer storage (uploads/)
+// =========================
+const uploadsDir = path.join(__dirname, "..", "uploads");
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-/* =========================
-   MULTER CONFIG
-========================= */
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, "uploads/"),
+    destination: (req, file, cb) => {
+        cb(null, uploadsDir);
+    },
     filename: (req, file, cb) => {
-        const uniqueName = Date.now() + "-" + Math.round(Math.random() * 1e9);
-        cb(null, uniqueName + path.extname(file.originalname));
+        const ext = path.extname(file.originalname) || "";
+        const base = Date.now() + "-" + Math.round(Math.random() * 1e9);
+        cb(null, base + ext);
     },
 });
 
-const upload = multer({
-    storage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-    fileFilter: (req, file, cb) => {
-        if (file.mimetype.startsWith("image/")) cb(null, true);
-        else cb(new Error("Only image files allowed"));
-    },
-});
+const upload = multer({ storage });
 
-/* =========================
-   AUTH MIDDLEWARE
-========================= */
-const auth = (req, res, next) => {
+// =========================
+// AUTH MIDDLEWARE
+// - sets req.userId
+// =========================
+const requireAuth = (req, res, next) => {
     try {
-        const token = req.headers.authorization?.split(" ")[1];
-        if (!token) return res.status(401).json({ message: "No token provided" });
+        const header = req.headers.authorization;
+        if (!header || !header.startsWith("Bearer ")) {
+            return res.status(401).json({ message: "No token provided" });
+        }
 
+        const token = header.split(" ")[1];
         const decoded = jwt.verify(
             token,
             process.env.JWT_SECRET || "toolrental-super-secret-2026"
         );
 
+        // IMPORTANT: your token payload uses { userId: ... }
         req.userId = decoded.userId;
+        if (!req.userId) return res.status(401).json({ message: "Invalid token payload" });
+
         next();
-    } catch {
-        return res.status(401).json({ message: "Invalid token" });
+    } catch (err) {
+        return res.status(401).json({ message: "Invalid/expired token" });
     }
 };
 
-/* =========================
-   ADD TOOL (WITH IMAGE)
-   POST /api/tools
-========================= */
-router.post("/", auth, upload.single("image"), async (req, res) => {
-    try {
-        const db = req.app.get("db");
-
-        const { name, description, category, condition, price } = req.body;
-        if (!name || !price) {
-            return res.status(400).json({ message: "Name and price are required" });
-        }
-
-        const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
-
-        const result = await db.query(
-            `
-      INSERT INTO tools
-      (name, description, category, condition, price_per_day, image_url, owner_id, available)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, true)
-      RETURNING *
-      `,
-            [name, description, category, condition, price, imageUrl, req.userId]
-        );
-
-        res.status(201).json(result.rows[0]);
-    } catch (err) {
-        console.error("Add tool error:", err);
-        res.status(500).json({ message: "Failed to add tool" });
+// =========================
+// Helper middleware:
+// If request is multipart/form-data, run multer.single('image')
+// otherwise skip
+// =========================
+const multipartHandler = (req, res, next) => {
+    const ctype = (req.headers["content-type"] || "").toLowerCase();
+    if (ctype.startsWith("multipart/form-data")) {
+        return upload.single("image")(req, res, next);
     }
-});
+    next();
+};
 
-/* =========================
-   ✅ GET ALL TOOLS + RATINGS
+/* ======================================================
+   PUBLIC GET ALL TOOLS (ONLY APPROVED)
    GET /api/tools
-   returns avg_rating + review_count
-========================= */
+====================================================== */
 router.get("/", async (req, res) => {
     try {
         const db = req.app.get("db");
@@ -96,25 +81,26 @@ router.get("/", async (req, res) => {
       FROM tools t
       JOIN users u ON t.owner_id = u.id
       LEFT JOIN tool_reviews r ON r.tool_id = t.id
+      WHERE LOWER(t.approval_status) = 'approved'
       GROUP BY t.id, u.name
       ORDER BY t.created_at DESC
     `);
 
         res.json(result.rows);
     } catch (err) {
-        console.error("Get tools error:", err);
-        res.status(500).json({ error: err.message });
+        console.error("GET /api/tools error:", err);
+        res.status(500).json({ message: err.message || "Server error" });
     }
 });
 
-/* =========================
-   GET MY TOOLS
-   GET /api/tools/my
-   (optional: also returns rating stats)
-========================= */
-router.get("/my", auth, async (req, res) => {
+/* ======================================================
+   GET SINGLE TOOL BY ID (ONLY APPROVED)
+   GET /api/tools/:id
+====================================================== */
+router.get("/:id", async (req, res) => {
     try {
         const db = req.app.get("db");
+        const { id } = req.params;
 
         const result = await db.query(
             `
@@ -126,185 +112,69 @@ router.get("/my", auth, async (req, res) => {
       FROM tools t
       JOIN users u ON t.owner_id = u.id
       LEFT JOIN tool_reviews r ON r.tool_id = t.id
-      WHERE t.owner_id = $1
-      GROUP BY t.id, u.name
-      ORDER BY t.created_at DESC
-      `,
-            [req.userId]
-        );
-
-        res.json(result.rows);
-    } catch (err) {
-        console.error("Get my tools error:", err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-/* =========================
-   ✅ GET SINGLE TOOL BY ID + RATINGS
-   GET /api/tools/:id
-========================= */
-router.get("/:id", async (req, res) => {
-    try {
-        const db = req.app.get("db");
-        const { id } = req.params;
-
-        const result = await db.query(
-            `
-      SELECT 
-        t.*, 
-        u.name AS owner_name, 
-        u.email AS owner_email,
-        COALESCE(ROUND(AVG(r.rating)::numeric, 1), 0) AS avg_rating,
-        COUNT(r.id) AS review_count
-      FROM tools t
-      JOIN users u ON t.owner_id = u.id
-      LEFT JOIN tool_reviews r ON r.tool_id = t.id
       WHERE t.id = $1
-      GROUP BY t.id, u.name, u.email
+        AND LOWER(t.approval_status) = 'approved'
+      GROUP BY t.id, u.name
       `,
             [id]
         );
 
-        if (!result.rows[0]) {
+        if (result.rows.length === 0) {
             return res.status(404).json({ message: "Tool not found" });
         }
 
         res.json(result.rows[0]);
     } catch (err) {
-        console.error("Get tool error:", err);
-        res.status(500).json({ error: err.message });
+        console.error("GET /api/tools/:id error:", err);
+        res.status(500).json({ message: err.message || "Server error" });
     }
 });
 
-/* =========================
-   ✅ UPDATE AVAILABILITY ONLY
-   PATCH /api/tools/:id/availability
-   owner only
-========================= */
-router.patch("/:id/availability", auth, async (req, res) => {
+/* ======================================================
+   CREATE TOOL (DEFAULT PENDING)
+   POST /api/tools
+   Accepts either JSON or multipart/form-data (with file field "image")
+====================================================== */
+router.post("/", requireAuth, multipartHandler, async (req, res) => {
     try {
         const db = req.app.get("db");
-        const { id } = req.params;
-        const { available } = req.body;
 
-        if (typeof available !== "boolean") {
-            return res.status(400).json({ message: "available must be boolean true/false" });
+        const {
+            name,
+            description = "",
+            category,
+            condition,
+            price, // front may send `price` or `price_per_day`
+            price_per_day,
+            imageUrl = "",
+        } = req.body || {};
+
+        const priceValue = price_per_day ?? price;
+
+        if (!name || !category || !condition || priceValue === undefined || priceValue === "") {
+            return res.status(400).json({ message: "Missing required fields" });
         }
 
-        const existing = await db.query(`SELECT * FROM tools WHERE id = $1`, [id]);
-        const tool = existing.rows[0];
-
-        if (!tool) return res.status(404).json({ message: "Tool not found" });
-
-        if (String(tool.owner_id) !== String(req.userId)) {
-            return res.status(403).json({ message: "Not allowed" });
-        }
-
-        const updated = await db.query(
-            `UPDATE tools SET available = $1 WHERE id = $2 RETURNING *`,
-            [available, id]
-        );
-
-        res.json(updated.rows[0]);
-    } catch (err) {
-        console.error("Availability update error:", err);
-        res.status(500).json({ message: "Failed to update availability" });
-    }
-});
-
-/* =========================
-   UPDATE TOOL (WITH OPTIONAL IMAGE)
-   PUT /api/tools/:id
-   owner only
-========================= */
-router.put("/:id", auth, upload.single("image"), async (req, res) => {
-    try {
-        const db = req.app.get("db");
-        const { id } = req.params;
-
-        const existing = await db.query(`SELECT * FROM tools WHERE id = $1`, [id]);
-        const tool = existing.rows[0];
-
-        if (!tool) return res.status(404).json({ message: "Tool not found" });
-
-        if (String(tool.owner_id) !== String(req.userId)) {
-            return res.status(403).json({ message: "Not allowed" });
-        }
-
-        const { name, description, category, condition, price } = req.body;
-
-        let imageUrl = tool.image_url;
-
+        // If a file was uploaded, construct image URL (served from /uploads)
+        let finalImageUrl = imageUrl || "";
         if (req.file) {
-            imageUrl = `/uploads/${req.file.filename}`;
-
-            if (tool.image_url) {
-                const oldPath = path.join(process.cwd(), tool.image_url.replace("/", ""));
-                if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-            }
+            finalImageUrl = `/uploads/${req.file.filename}`;
         }
 
-        const updated = await db.query(
+        const result = await db.query(
             `
-      UPDATE tools
-      SET name = $1,
-          description = $2,
-          category = $3,
-          condition = $4,
-          price_per_day = $5,
-          image_url = $6
-      WHERE id = $7
+      INSERT INTO tools
+      (name, description, category, condition, price_per_day, image_url, owner_id, available, approval_status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, true, 'pending')
       RETURNING *
       `,
-            [
-                name ?? tool.name,
-                description ?? tool.description,
-                category ?? tool.category,
-                condition ?? tool.condition,
-                price ?? tool.price_per_day,
-                imageUrl,
-                id,
-            ]
+            [name, description, category, condition, priceValue, finalImageUrl, req.userId]
         );
 
-        res.json(updated.rows[0]);
+        res.status(201).json(result.rows[0]);
     } catch (err) {
-        console.error("Update tool error:", err);
-        res.status(500).json({ message: "Failed to update tool" });
-    }
-});
-
-/* =========================
-   DELETE TOOL
-   DELETE /api/tools/:id
-   owner only
-========================= */
-router.delete("/:id", auth, async (req, res) => {
-    try {
-        const db = req.app.get("db");
-        const { id } = req.params;
-
-        const existing = await db.query(`SELECT * FROM tools WHERE id = $1`, [id]);
-        const tool = existing.rows[0];
-
-        if (!tool) return res.status(404).json({ message: "Tool not found" });
-
-        if (String(tool.owner_id) !== String(req.userId)) {
-            return res.status(403).json({ message: "Not allowed" });
-        }
-
-        if (tool.image_url) {
-            const imgPath = path.join(process.cwd(), tool.image_url.replace("/", ""));
-            if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
-        }
-
-        await db.query(`DELETE FROM tools WHERE id = $1`, [id]);
-
-        res.json({ message: "Tool deleted" });
-    } catch (err) {
-        console.error("Delete tool error:", err);
-        res.status(500).json({ message: "Failed to delete tool" });
+        console.error("POST /api/tools error:", err);
+        res.status(500).json({ message: err.message || "Server error" });
     }
 });
 
