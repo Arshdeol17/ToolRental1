@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+server/obj/
+server/bin/
+client/src/pages/desktop.ini
